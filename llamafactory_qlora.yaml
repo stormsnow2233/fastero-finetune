@@ -21,7 +21,7 @@ quantization_method: bitsandbytes
 dataset: naturalconv_train
 eval_dataset: naturalconv_valid
 dataset_dir: data
-template: qwen2           # Qwen2.5-Instruct 的官方 chat 模板
+template: qwen            # Qwen 系官方 ChatML 模板（Qwen2.5-Instruct 用 qwen；qwen2 在 LlamaFactory 里不存在）
 cutoff_len: 1024          # 对话平均 ~260 token，1024 覆盖全部样本且不浪费
 packing: false            # 不打包：多轮对话逐条训，loss 只算 assistant 回复，质量更稳
 overwrite_cache: true
