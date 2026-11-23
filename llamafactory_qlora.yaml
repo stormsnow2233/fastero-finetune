@@ -1,0 +1,51 @@
+# Qwen2.5-3B-Instruct 中文聊天 SFT —— QLoRA 配置（单张 T4 16GB）
+# 用法：在 LlamaFactory 仓库根目录运行：llamafactory-cli train llamafactory_qlora.yaml
+# 数据文件 train.json / validation.json + dataset_info.json 放在 LlamaFactory 的 data/ 目录下
+
+### 模型
+model_name_or_path: Qwen/Qwen2.5-3B-Instruct
+trust_remote_code: true   # Qwen 系模型需要
+
+### 方法：QLoRA（4-bit 量化底座 + 只训 LoRA 适配器）
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_target: all          # 训所有线性层（q/k/v/o + gate/up/down），聊天风格学得更全
+lora_rank: 16             # rank 16：3B 模型 + 3500 条数据够用；再大容易过拟合且更占显存
+lora_alpha: 32            # alpha = 2×rank，标准配比，缩放因子 2
+lora_dropout: 0.05        # 轻微 dropout 防过拟合
+quantization_bit: 4       # 4-bit NF4 量化底座：3B 模型只占 ~2GB 显存，T4 塞得下
+quantization_method: bitsandbytes
+
+### 数据
+dataset: naturalconv_train
+eval_dataset: naturalconv_valid
+dataset_dir: data
+template: qwen2           # Qwen2.5-Instruct 的官方 chat 模板
+cutoff_len: 1024          # 对话平均 ~260 token，1024 覆盖全部样本且不浪费
+packing: false            # 不打包：多轮对话逐条训，loss 只算 assistant 回复，质量更稳
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### 训练超参
+per_device_train_batch_size: 4      # 每步 4 条；配合梯度累积，有效 batch 16
+gradient_accumulation_steps: 4      # 有效 batch = 4×4 = 16，3500 条 ≈ 219 步/epoch
+learning_rate: 1.0e-4               # QLoRA 常用 lr；LoRA 只训少量参数，lr 可以比全参高
+num_train_epochs: 3.0               # 3 epoch：3500 条小数据，3 轮够学风格，更多易过拟合
+lr_scheduler_type: cosine           # 余弦衰减，收尾更稳
+warmup_ratio: 0.03                  # 前 3% 步数热身，避免初期震荡
+bf16: true                          # T4 支持 bf16，比 fp16 更稳
+gradient_checkpointing: true        # 用少量速度换显存：激活不全存，T4 必开
+optim: paged_adamw_8bit             # 8-bit 分页 AdamW：优化器状态只占 ~50MB（QLoRA 标配）
+max_grad_norm: 1.0                  # 梯度裁剪防爆炸
+
+### 输出与评估
+output_dir: saves/Qwen2.5-3B-Instruct/lora/naturalconv-sft
+logging_steps: 10
+save_steps: 200                     # 每 200 步存一个 checkpoint（3 epoch 共 ~656 步）
+eval_strategy: steps
+eval_steps: 200
+per_device_eval_batch_size: 4
+plot_loss: true
+overwrite_output_dir: true
+report_to: none                     # 不用 wandb，不需要 token
